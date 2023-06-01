@@ -1,9 +1,14 @@
 import numpy as np
 import random
+import time
+
+block_size = 8
+batch_size = 512
+
+l1_size = 32
 
 with open('tinyshakespeare.txt', 'r') as file:
     text = file.read()
-
 
 chars = sorted(list(set(text)))
 vocab_size = len(chars)
@@ -21,9 +26,6 @@ tokens = np.array(encode(text), dtype=np.uint8)
 
 train_data = tokens[:int(len(tokens) * .9)]
 val_data = tokens[int(len(tokens) * .9):]
-
-block_size = 8
-batch_size = 128
 
 def get_batch(split = 'val'):
     data = train_data if split == 'train' else val_data
@@ -55,22 +57,26 @@ def select_idxs(blocks):
 
 class Model:
     def __init__(self):
-        self.weights = np.random.uniform(0, 1, (vocab_size, vocab_size))
+        self.in_l1_weights = np.random.uniform(0, 1, (vocab_size, l1_size)) #embedding lookup layer
+        self.l1_out_weights = np.random.uniform(0, 1, (l1_size, vocab_size))
+        self.l1 = np.zeros((l1_size,))
+        self.l2 = np.zeros((vocab_size,))
     
     def forward(self, xs, ys = None):
-        return np.array([[self.weights[idx] for idx in block] for block in xs])
+        self.l1 = np.array([self.in_l1_weights[block[-1]] for block in xs])
+        self.l2 = np.dot(self.l1, self.l1_out_weights)
+        return softmax(self.l2)
 
     def generate(self, xs, ys = None, num = 1):
         result = xs
         for i in range(num):
-            logits = self.forward(result)[:, -1]
-            probs = softmax(logits)
+            probs = self.forward(result)
             token = select_idxs(probs).reshape(len(xs), 1)
             result = np.append(result, token, 1)
         
         if ys is None:
             return result
-        return result, 1
+        return result, None
         ys_probs = categorize(ys[:, -1:]).reshape((batch_size, vocab_size))
         loss = -np.sum(ys_probs * np.log(probs), axis=-1)
         return result, loss
@@ -78,33 +84,45 @@ class Model:
     def train(self, epochs, rate):
         for epoch in range(epochs):
             batch = get_batch('train')
-            grad = np.zeros(self.weights.shape)
+            grad_w1 = np.zeros(self.l1_out_weights.shape)
+            grad_w0 = np.zeros(self.in_l1_weights.shape)
             total_loss = 0
             for i in range(1, block_size):
-                xs, ys = (batch[0])[:, :i], (batch[1])[:, :i]
-                logits = self.forward(xs)[:, -1]
-                # print(logits)
-                probs = softmax(logits)
-                token = np.argmax(probs, axis=-1)
-                ys_probs = categorize(ys[:, -1:]).reshape((batch_size, vocab_size))
-                loss = -np.sum(ys_probs * np.log(probs), axis=-1)
-                dLdp = -ys_probs / probs
-                explogits = np.exp(logits)
+                xs, ys = batch[0][:, :i], batch[1][:, :i]
+
+                probs = self.forward(xs)
+                expected_probs = categorize(ys[:, -1:]).reshape((batch_size, vocab_size))
+
+                loss = -np.sum(expected_probs * np.log(probs), axis=-1)
+                # print(loss)
+
+                dLdp = -expected_probs / probs
+                explogits = np.exp(self.l2)
                 S = np.repeat(np.sum(explogits, axis=-1).reshape((batch_size,1)), vocab_size, axis=-1)
                 k = S - explogits
-                dpdw = (explogits * k) / np.power(explogits + k, 2)
-                dLdw = dLdp * dpdw
-                
-                # print(dLdw)
-                for b, block in enumerate(xs):
-                    grad[xs[b][-1]] += dLdw[b]
-                # grad[xs[-1]] += dLdw
-                # print(grad[0])
+                dpdl1 = (explogits * k) / np.power(explogits + k, 2)
+                dLdl1 = dLdp * dpdl1
 
+                dLdw1 = np.repeat(dLdl1.reshape(batch_size, 1, vocab_size), l1_size, axis=-2) * self.in_l1_weights[xs[:,-1]].reshape(batch_size, l1_size, 1)
+                dLdw0 = np.dot(dLdl1, self.l1_out_weights.T)
+
+                # print(dLdw0)
+                # print(dLdw1)
+
+                for b, block in enumerate(xs):
+                    grad_w1 += dLdw1[b]
+                    grad_w0[xs[b][-1]] += dLdw0[b]
                 total_loss += np.sum(loss) / batch_size
 
-            print("epoch", epoch, "mean loss", total_loss / (block_size - 1))
-            self.weights -= grad * rate
+            grad_w1 /= batch_size
+            grad_w0 /= batch_size
+
+            print("epoch", epoch, "mean loss", total_loss / (block_size + 1))
+            print(np.min(grad_w0), np.max(grad_w0))
+            print(np.min(grad_w1), np.max(grad_w1))
+            self.in_l1_weights -= grad_w0 * rate
+            self.l1_out_weights -= grad_w1 * rate
+            # time.sleep(2)
             
 
 
@@ -112,10 +130,10 @@ def print_encoded(blocks, losses = None):
     print([decode(block) + ("" if losses is None else " " + str(losses[i])) for i, block in enumerate(blocks)])
 
 model = Model()
-# batch = get_batch('val')
-# print_encoded(batch[1])
-# print_encoded(*model.generate(*batch))
+batch = get_batch('val')
+print_encoded(batch[1])
+print_encoded(*model.generate(*batch, num=10))
 
-model.train(100, .01)
+model.train(50, .01)
 
 print_encoded(model.generate(xs = np.array([encode('the')]), ys = None, num = 200))
