@@ -181,16 +181,6 @@ class Model:
         return decode(np.array(x))
 
 
-"""
-
-def estimate_loss(model):
-    xs, ys = get_batch(split='val', size=eval_itrs)
-    ys = tf.keras.utils.to_categorical(ys, num_classes=vocab_size)
-    logits = model(xs, training=False).reshape(eval_itrs, vocab_size)
-    losses = loss_fn(ys, logits)
-    return float(losses)
-"""
-
 model = Model()
 
 # model.train(1000000)
