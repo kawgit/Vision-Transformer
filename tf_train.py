@@ -11,9 +11,11 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 from tensorflow.python.ops.numpy_ops import np_config
 np_config.enable_numpy_behavior()
-print("tensorflow imported.")
+print("tensorflow", tf.__version__, "imported.")
 
-block_size = 8
+print(tf.test.gpu_device_name())
+
+block_size = 32
 batch_size = 16
 num_batches = 100
 num_embd = 32
@@ -101,7 +103,10 @@ def load_softy(path=None):
         return tf.keras.models.load_model(path)
 
     embds = tf.keras.Input(shape=(None, num_embd))
-    logits = tf.keras.layers.Dense(vocab_size, activation='softmax')(embds)
+    x = tf.keras.layers.Dense(vocab_size, activation='sigmoid')(embds)
+    x = tf.keras.layers.Dense(vocab_size, activation='sigmoid')(x)
+    x = tf.keras.layers.Dense(vocab_size, activation='sigmoid')(x)
+    logits = tf.keras.layers.Dense(vocab_size, activation='softmax')(x)
     model = tf.keras.Model(inputs=embds, outputs=logits, name="softy")
     return model
 
@@ -147,11 +152,13 @@ class Model:
         negtril = tf.constant((np.tril(np.ones((block_size, block_size))) - 1) * (1.7976931348623157e+308), dtype=tf.float32)
         weights = tf.math.add(weights, negtril)
 
-        weights = tf.math.exp(weights)
-        sums = tf.math.reduce_sum(weights, axis=-1)
-        sums = tf.repeat(tf.reshape(sums, (tf.shape(sums)[0], block_size, 1)), block_size, axis=-1)
+        # weights = tf.math.exp(weights)
+        # sums = tf.math.reduce_sum(weights, axis=-1)
+        # sums = tf.repeat(tf.reshape(sums, (tf.shape(sums)[0], block_size, 1)), block_size, axis=-1)
 
-        weights = tf.divide(weights, sums)
+        # weights = tf.divide(weights, sums)
+
+        weights = tf.nn.softmax(weights, axis=-1)
 
         weighted_embds = tf.matmul(weights, embds)
 
@@ -189,14 +196,14 @@ class Model:
             if epoch % 10 == 0:
                 self.save_checkpoint(loss_est)
     
-    def generate(self, seed="there once", num_chars=100):
+    def generate(self, seed="What a strange drowsiness possesses them! \n Wha", num_chars=100):
         x = list(encode(seed))
         for i in range(num_chars):
-            probs = self.training_model(np_to_categorical(np.array([x[-8:]])), training=False).numpy()[0][-1]
+            probs = self.training_model(np_to_categorical(np.array([x[-block_size:]])), training=False).numpy()[0][-1]
+            # print(list(reversed(sorted(probs)))[:5])
             choice = np.random.choice(np.arange(vocab_size), p=probs)
-            print(choice)
             x.append(choice)
-        return decode(np.array(x))
+        return decode(np.array(x)).replace("\n", "\\n")
 
 
 """
@@ -211,7 +218,10 @@ def estimate_loss(model):
 
 model = Model()
 
-# model.train(100)
+# model.train(10000)
 # train_model(model, 10)
-print(model.generate("And agai", 1000))
+print(model.generate(num_chars=10))
+print(model.generate(num_chars=10))
+print(model.generate(num_chars=10))
+print(model.generate(num_chars=10))
 # print(generate(model, num_chars=1000))
