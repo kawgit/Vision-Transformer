@@ -1,11 +1,32 @@
 import numpy as np
 import random
 import time
+import os
+import glob
+import time
+import math
 
-block_size = 8
-batch_size = 512
+print("importing tensorflow...")
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
+import tensorflow as tf
+from tensorflow.python.ops.numpy_ops import np_config
+np_config.enable_numpy_behavior()
+print("tensorflow", tf.__version__, "imported.")
 
-l1_size = 32
+print(tf.test.gpu_device_name())
+
+block_size = 128
+batch_size = 64
+num_batches = 16
+optimizer = tf.keras.optimizers.Adam(learning_rate=.0003)
+loss_fn = tf.keras.losses.CategoricalCrossentropy()
+eval_itrs = 32
+num_heads = 6
+num_sablocks = 6
+dropout_rate = .2
+head_size = 32
+num_embds = num_heads * head_size
+
 
 with open('tinyshakespeare.txt', 'r') as file:
     text = file.read()
@@ -27,113 +48,151 @@ tokens = np.array(encode(text), dtype=np.uint8)
 train_data = tokens[:int(len(tokens) * .9)]
 val_data = tokens[int(len(tokens) * .9):]
 
-def get_batch(split = 'val'):
+def get_batch(split='val', size=batch_size):
     data = train_data if split == 'train' else val_data
-    indexes = np.random.randint(0, len(data) - block_size, (batch_size,))
+    indexes = np.random.randint(0, len(data) - block_size, (size,))
     xs = np.array([data[i : i + block_size] for i in indexes], dtype=np.uint8)
     ys = np.array([data[i + 1 : i + block_size + 1] for i in indexes], dtype=np.uint8)
     return xs, ys
 
-def softmax(xs):
-    return np.array([np.exp(x) / np.sum(np.exp(x), axis=0) for x in xs])
+def get_batches(split='val', num=1, size=batch_size):
+    data = train_data if split == 'train' else val_data
+    indexes = np.random.randint(0, len(data) - block_size, (size * num,))
+    xs = np.array([data[i : i + block_size] for i in indexes], dtype=np.uint8)
+    ys = np.array([data[i + 1 : i + block_size + 1] for i in indexes], dtype=np.uint8)
+    ys = tf.keras.utils.to_categorical(ys, num_classes=vocab_size)
+    return xs, ys
 
-def categorize(blocks):
-    result = np.zeros((*blocks.shape, vocab_size))
-    for i, block in enumerate(blocks):
-        for j, idx in enumerate(block):
-            result[i][j][idx] = 1
-    return result
+def np_to_categorical(y):
+    return np.eye(vocab_size)[y]
 
-def select_idx(block):
-    r = random.uniform(0, 1)
-    for idx, prob in enumerate(block):
-        r -= block[idx]
-        if r < 0:
-            return idx
-    return len(block) - 1
+class Head:
+    def __init__(self, name):
+        embds = tf.keras.Input(shape=(None, num_embds))
+        
+        queries = tf.keras.layers.Dense(head_size, name='queries_maker')(embds)
+        keys = tf.keras.layers.Dense(head_size, name='keys_maker')(embds)
+        values = tf.keras.layers.Dense(num_embds, name='values_maker')(embds)
 
-def select_idxs(blocks):
-    return np.array([select_idx(block) for block in blocks])
+        weights = tf.matmul(queries, keys, transpose_b=True) #(Tq, Tk)
+        tril = tf.constant(np.tril(np.ones((block_size, block_size))) * (head_size**-.5), dtype=tf.float32)
+        weights = tf.math.multiply(weights, tril)
+        negtril = tf.constant((np.tril(np.ones((block_size, block_size))) - 1) * (1.7976931348623157e+308), dtype=tf.float32)
+        weights = tf.math.add(weights, negtril)
+        weights = tf.nn.softmax(weights, axis=-1)
+        weights = tf.keras.layers.Dropout(dropout_rate)(weights)
+
+        weighted_embds = tf.matmul(weights, values)
+
+        self.model = tf.keras.Model(inputs=embds, outputs=weighted_embds, name=name)
+        tf.keras.utils.plot_model(self.model, to_file='head.png')
+    
+
+class SABlock:
+    def __init__(self, name):
+
+        self.heads = [Head("head_" + str(i)) for i in range(num_heads)]
+
+        embds = tf.keras.Input(shape=(None, num_embds))
+        out = embds
+
+        #MHA
+        out = tf.keras.layers.LayerNormalization()(out)
+        weighted_embds = [head.model(embds) for head in self.heads]
+        weighted_embds = tf.concat(weighted_embds, 2)
+        weighted_embds = tf.keras.layers.Dropout(dropout_rate)(weighted_embds)
+        proj = tf.keras.layers.Dense(num_embds, use_bias=False, kernel_initializer=tf.keras.initializers.Zeros())(weighted_embds)
+        out = tf.math.add(out, proj)
+
+        #FF
+        out = tf.keras.layers.LayerNormalization()(out)
+        x = tf.keras.layers.Dense(num_embds * 4, activation='relu')(out)
+        x = tf.keras.layers.Dense(num_embds, activation='relu', kernel_initializer=tf.keras.initializers.Zeros(), bias_initializer=tf.keras.initializers.Zeros())(x)
+        out = tf.math.add(out, x)
+
+        self.model = tf.keras.Model(inputs=embds, outputs=out, name=name)
+        tf.keras.utils.plot_model(self.model, to_file='sablock.png')
+
 
 class Model:
-    def __init__(self):
-        self.in_l1_weights = np.random.uniform(0, 1, (vocab_size, l1_size)) #embedding lookup layer
-        self.l1_out_weights = np.random.uniform(0, 1, (l1_size, vocab_size))
-        self.l1 = np.zeros((l1_size,))
-        self.l2 = np.zeros((vocab_size,))
-    
-    def forward(self, xs, ys = None):
-        self.l1 = np.array([self.in_l1_weights[block[-1]] for block in xs])
-        self.l2 = np.dot(self.l1, self.l1_out_weights)
-        return softmax(self.l2)
+    def __init__(self, path='__latest__'):
+        self.sablocks = [SABlock("sablock_" + str(i)) for i in range(num_sablocks)]
 
-    def generate(self, xs, ys = None, num = 1):
-        result = xs
-        for i in range(num):
-            probs = self.forward(result)
-            token = select_idxs(probs).reshape(len(xs), 1)
-            result = np.append(result, token, 1)
+        block = tf.keras.Input(shape=(None,))
+        embds = tf.keras.layers.Embedding(vocab_size, num_embds)(block)
+
+        for sablock in self.sablocks:
+            embds = sablock.model(embds)
+
+        # logits = tf.keras.layers.Dense(vocab_size, activation='relu')(embds)
+        # logits = tf.keras.layers.Dense(vocab_size, activation='sigmoid')(logits)
+        logits = tf.keras.layers.Dense(vocab_size, activation='softmax')(embds)
         
-        if ys is None:
-            return result
-        return result, None
-        ys_probs = categorize(ys[:, -1:]).reshape((batch_size, vocab_size))
-        loss = -np.sum(ys_probs * np.log(probs), axis=-1)
-        return result, loss
+        self.model = tf.keras.Model(inputs=block, outputs=logits, name="transformer")
+        self.model.compile(optimizer=optimizer, loss=loss_fn)
+        tf.keras.utils.plot_model(self.model, to_file='model.png')
+
+        if path == '__latest__':
+            all_subdirs = ['checkpoints/' + d for d in os.listdir('checkpoints') if os.path.isdir('checkpoints/' + d)] # * means all if need specific format then *.csv
+            if (len(all_subdirs) == 0):
+                path = None
+                print("no checkpoints found")
+            else:
+                path = max(all_subdirs, key=os.path.getctime)
+                print("loading latest checkpoint:", path)
+                self.model.load_weights(path)
     
-    def train(self, epochs, rate):
-        for epoch in range(epochs):
-            batch = get_batch('train')
-            grad_w1 = np.zeros(self.l1_out_weights.shape)
-            grad_w0 = np.zeros(self.in_l1_weights.shape)
-            total_loss = 0
-            for i in range(1, block_size):
-                xs, ys = batch[0][:, :i], batch[1][:, :i]
+    def save_checkpoint(self, loss=0):
+        path = 'checkpoints/' + str(round(time.time())) + "_" + str(round(float(loss), 2))
+        self.model.save_weights(path)
+        for sablock in self.sablocks:
+            sablock_path = path + "/" + sablock.model.name 
+            for head in sablock.heads:
+                head_path = sablock_path + "/" + head.model.name
+                head.model.save_weights(head_path) 
 
-                probs = self.forward(xs)
-                expected_probs = categorize(ys[:, -1:]).reshape((batch_size, vocab_size))
+    def train(self, epochs):
+        for epoch in range(epochs // (5 * 100)):
+            print("generating batches...")
+            xs, ys = get_batches(split='train', num=num_batches)
+            print("finished generating batches.")
+            self.model.fit(x=xs, y=ys, batch_size=batch_size, epochs=10)
 
-                loss = -np.sum(expected_probs * np.log(probs), axis=-1)
-                # print(loss)
+            loss = self.model.evaluate(*get_batches(split='val', num=num_batches))
+            print("val_loss:", str(loss))
 
-                dLdp = -expected_probs / probs
-                explogits = np.exp(self.l2)
-                S = np.repeat(np.sum(explogits, axis=-1).reshape((batch_size,1)), vocab_size, axis=-1)
-                k = S - explogits
-                dpdl1 = (explogits * k) / np.power(explogits + k, 2)
-                dLdl1 = dLdp * dpdl1
-
-                dLdw1 = np.repeat(dLdl1.reshape(batch_size, 1, vocab_size), l1_size, axis=-2) * self.in_l1_weights[xs[:,-1]].reshape(batch_size, l1_size, 1)
-                dLdw0 = np.dot(dLdl1, self.l1_out_weights.T)
-
-                # print(dLdw0)
-                # print(dLdw1)
-
-                for b, block in enumerate(xs):
-                    grad_w1 += dLdw1[b]
-                    grad_w0[xs[b][-1]] += dLdw0[b]
-                total_loss += np.sum(loss) / batch_size
-
-            grad_w1 /= batch_size
-            grad_w0 /= batch_size
-
-            print("epoch", epoch, "mean loss", total_loss / (block_size + 1))
-            print(np.min(grad_w0), np.max(grad_w0))
-            print(np.min(grad_w1), np.max(grad_w1))
-            self.in_l1_weights -= grad_w0 * rate
-            self.l1_out_weights -= grad_w1 * rate
-            # time.sleep(2)
-            
+            if epoch % 10 == 0:
+                self.save_checkpoint(loss)
+                print("checkpoint saved.")
+        self.save_checkpoint(loss)
+        print("checkpoint saved.")
+    
+    def generate(self, seed="Nor I; my spirits are nimble.\nThey fell together all, as by consent;\nThey dropp'd, as by a thunder-stroke. What might,\nWorthy Sebastian? O, what might?--No more:--\nAnd yet me thinks I see it in thy face,\nWhat thou shouldst be: the occasion speaks thee, and\n", num_chars=100):
+        x = list(encode(seed))
+        for i in range(num_chars):
+            inp = np.array([x[-block_size:]])
+            pad_len = block_size - inp.shape[1]
+            inp = np.pad(inp, ((0, 0), (0, pad_len)))
+            probs = self.model(inp).numpy()[0][-pad_len - 1]
+            choice = np.random.choice(np.arange(vocab_size), p=probs)
+            x.append(choice)
+            print("itr", i)
+            print(decode(x))
+        return decode(np.array(x))
 
 
-def print_encoded(blocks, losses = None):
-    print([decode(block) + ("" if losses is None else " " + str(losses[i])) for i, block in enumerate(blocks)])
+"""
+
+def estimate_loss(model):
+    xs, ys = get_batch(split='val', size=eval_itrs)
+    ys = tf.keras.utils.to_categorical(ys, num_classes=vocab_size)
+    logits = model(xs, training=False).reshape(eval_itrs, vocab_size)
+    losses = loss_fn(ys, logits)
+    return float(losses)
+"""
 
 model = Model()
-batch = get_batch('val')
-print_encoded(batch[1])
-print_encoded(*model.generate(*batch, num=10))
 
-model.train(50, .01)
+# model.train(1000000)
 
-print_encoded(model.generate(xs = np.array([encode('the')]), ys = None, num = 200))
+print(model.generate(seed="hello world!", num_chars=10000))
