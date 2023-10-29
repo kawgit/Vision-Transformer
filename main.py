@@ -5,61 +5,106 @@ import os
 import glob
 import time
 import math
+from collections import Counter
+import re
+from tqdm import tqdm
 
 print("importing tensorflow...")
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 import tensorflow as tf
 from tensorflow.python.ops.numpy_ops import np_config
 np_config.enable_numpy_behavior()
-print("tensorflow", tf.__version__, "imported.")
+print("tensorflow", tf.__version__, "imported using device", tf.test.gpu_device_name())
 
-print(tf.test.gpu_device_name())
-
-block_size = 128
-batch_size = 64
-num_batches = 16
-optimizer = tf.keras.optimizers.Adam(learning_rate=.0003)
+block_size = 48
+batch_size = 128
+num_batches = 4
+optimizer = tf.keras.optimizers.Adam(learning_rate=.0001)
 loss_fn = tf.keras.losses.CategoricalCrossentropy()
 eval_itrs = 32
 num_heads = 6
 num_sablocks = 6
 dropout_rate = .2
-head_size = 32
+head_size = 84
 num_embds = num_heads * head_size
+num_customs = 500
 
+text_file_name = "microshakespeare.txt"
+checkpoints_path = "checkpoints_" + text_file_name.replace(".", "_")
 
-with open('tinyshakespeare.txt', 'r') as file:
-    text = file.read()
+with open(text_file_name, 'r', encoding="utf8") as file:
+    filetext = file.read()
 
-chars = sorted(list(set(text)))
-vocab_size = len(chars)
+RE_SPACES = "\s|\n|\.|\:|“|”|,|\"|/|\?|\!|@|\-"
 
-stoi = {c:i for i, c in enumerate(chars)}
-itos = {i:c for i, c in enumerate(chars)}
+splitted = filter(lambda x: len(x) > 1, re.split(RE_SPACES, filetext))
+words = Counter(splitted)
+counter_results = np.array(words.most_common(num_customs))
+customs = counter_results[:, 0]
 
-def encode(txt):
-    return [stoi[c] for c in txt]
+text_customs_removed = filetext
+for token in customs:
+    text_customs_removed = text_customs_removed.replace(token, "")
+
+reserve_size = len(text_customs_removed) + np.sum(counter_results[:, 1].astype(np.int32))
+print(reserve_size)
+
+standards = sorted(list(set(text_customs_removed)))
+
+vocab_size = len(customs) + len(standards)
+num_standards = len(standards)
+
+stoi = {c:i for i, c in enumerate(standards)}
+itos = {i:c for i, c in enumerate(standards)}
+
+for idx, token in enumerate(customs):
+    stoi[token] = idx + num_standards
+    itos[idx + num_standards] = token
+
+def encode(text, use_pbar = False):
+    tokens = []
+
+    if use_pbar:
+        pbar = tqdm(total=len(text))
+    while len(text) > 0:
+        for custom in customs:
+            if text.startswith(custom):
+                tokens.append(stoi[custom])
+                text = text[len(custom):]
+                if use_pbar:
+                    pbar.update(len(custom))
+                break
+        else:
+            tokens.append(stoi[text[0]])
+            text = text[1:]
+            if use_pbar:
+                pbar.update(1)
+    
+    return tokens
 
 def decode(tokens):
-    return ''.join([itos[token] for token in tokens])
+    result = ""
+    for token in tokens:
+        result += itos[token]
+    return result
 
-tokens = np.array(encode(text), dtype=np.uint8)
+tokens = np.array(encode(filetext, True), dtype=np.uint16)
 
-train_data = tokens[:int(len(tokens) * .9)]
+train_data = tokens[:]
 val_data = tokens[int(len(tokens) * .9):]
 
 def get_batch(split='val', size=batch_size):
     data = train_data if split == 'train' else val_data
     indexes = np.random.randint(0, len(data) - block_size, (size,))
-    xs = np.array([data[i : i + block_size] for i in indexes], dtype=np.uint8)
-    ys = np.array([data[i + 1 : i + block_size + 1] for i in indexes], dtype=np.uint8)
+    xs = np.array([data[i : i + block_size] for i in indexes], dtype=np.uint16)
+    ys = np.array([data[i + 1 : i + block_size + 1] for i in indexes], dtype=np.uint16)
     return xs, ys
 
 def get_batches(split='val', num=1, size=batch_size):
     data = train_data if split == 'train' else val_data
     indexes = np.random.randint(0, len(data) - block_size, (size * num,))
-    xs = np.array([data[i : i + block_size] for i in indexes], dtype=np.uint8)
-    ys = np.array([data[i + 1 : i + block_size + 1] for i in indexes], dtype=np.uint8)
+    xs = np.array([data[i : i + block_size] for i in indexes], dtype=np.uint16)
+    ys = np.array([data[i + 1 : i + block_size + 1] for i in indexes], dtype=np.uint16)
     ys = tf.keras.utils.to_categorical(ys, num_classes=vocab_size)
     return xs, ys
 
@@ -119,13 +164,13 @@ class Model:
         self.sablocks = [SABlock("sablock_" + str(i)) for i in range(num_sablocks)]
 
         block = tf.keras.Input(shape=(None,))
-        embds = tf.keras.layers.Embedding(vocab_size, num_embds)(block)
+        embds = tf.math.add(tf.keras.layers.Embedding(vocab_size, num_embds)(block), tf.keras.layers.Embedding(block_size, num_embds)(tf.range(block_size)))
 
         for sablock in self.sablocks:
             embds = sablock.model(embds)
 
-        # logits = tf.keras.layers.Dense(vocab_size, activation='relu')(embds)
-        # logits = tf.keras.layers.Dense(vocab_size, activation='sigmoid')(logits)
+        logits = tf.keras.layers.Dense(vocab_size, activation='relu')(embds)
+        logits = tf.keras.layers.Dense(vocab_size, activation='sigmoid')(logits)
         logits = tf.keras.layers.Dense(vocab_size, activation='softmax')(embds)
         
         self.model = tf.keras.Model(inputs=block, outputs=logits, name="transformer")
@@ -133,7 +178,7 @@ class Model:
         tf.keras.utils.plot_model(self.model, to_file='model.png')
 
         if path == '__latest__':
-            all_subdirs = ['checkpoints/' + d for d in os.listdir('checkpoints') if os.path.isdir('checkpoints/' + d)] # * means all if need specific format then *.csv
+            all_subdirs = [checkpoints_path + '/' + d for d in os.listdir(checkpoints_path) if os.path.isdir(checkpoints_path + '/' + d)] # * means all if need specific format then *.csv
             if (len(all_subdirs) == 0):
                 path = None
                 print("no checkpoints found")
@@ -143,7 +188,7 @@ class Model:
                 self.model.load_weights(path)
     
     def save_checkpoint(self, loss=0):
-        path = 'checkpoints/' + str(round(time.time())) + "_" + str(round(float(loss), 2))
+        path = checkpoints_path + '/' + str(round(time.time())) + "_" + str(round(float(loss), 2))
         self.model.save_weights(path)
         for sablock in self.sablocks:
             sablock_path = path + "/" + sablock.model.name 
@@ -152,7 +197,7 @@ class Model:
                 head.model.save_weights(head_path) 
 
     def train(self, epochs):
-        for epoch in range(epochs // (5 * 100)):
+        for epoch in range(epochs // 5):
             print("generating batches...")
             xs, ys = get_batches(split='train', num=num_batches)
             print("finished generating batches.")
@@ -161,13 +206,13 @@ class Model:
             loss = self.model.evaluate(*get_batches(split='val', num=num_batches))
             print("val_loss:", str(loss))
 
-            if epoch % 10 == 0:
+            if epoch % 5 == 0:
                 self.save_checkpoint(loss)
                 print("checkpoint saved.")
         self.save_checkpoint(loss)
         print("checkpoint saved.")
     
-    def generate(self, seed="Nor I; my spirits are nimble.\nThey fell together all, as by consent;\nThey dropp'd, as by a thunder-stroke. What might,\nWorthy Sebastian? O, what might?--No more:--\nAnd yet me thinks I see it in thy face,\nWhat thou shouldst be: the occasion speaks thee, and\n", num_chars=100):
+    def generate(self, seed="Hello World!", num_chars=100):
         x = list(encode(seed))
         for i in range(num_chars):
             inp = np.array([x[-block_size:]])
@@ -185,4 +230,8 @@ model = Model()
 
 # model.train(1000000)
 
-print(model.generate(seed="hello world!", num_chars=10000))
+seed = filetext[:block_size]
+
+# print(seed)
+
+print(model.generate(seed=seed, num_chars=10000))
