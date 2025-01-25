@@ -8,9 +8,6 @@ from utils import load_file, pickle_save
 
 class Tokenizer:
 
-    def __init__(self):
-        pass
-
     def train(self, text):
 
         print("Training tokenizer...")
