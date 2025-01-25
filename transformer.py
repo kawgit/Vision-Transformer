@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as functional
 
 from device import device
-from settings import vocab_size, context_size, embedding_size, key_size, num_layers, layer_size
+from settings import vocab_size, context_size, embedding_size, key_size, num_layers, layer_size, head_size
 
 class Transformer(nn.Module):
     
@@ -14,9 +14,9 @@ class Transformer(nn.Module):
 
         self.encoder = TokenEncoder()
 
-        self.blocks = nn.ModuleList([
+        self.heads = nn.ModuleList([
                 nn.ModuleList([
-                    SelfAttentionBlock() for j in range(layer_size)
+                    SelfAttentionHead() for j in range(layer_size)
                 ]) for i in range(num_layers)
             ])
         
@@ -34,9 +34,9 @@ class Transformer(nn.Module):
 
     def _verify(self):
         self.encoder._verify()
-        for blocks in self.blocks:
-            for block in blocks:
-                block._verify()
+        for heads in self.heads:
+            for head in heads:
+                head._verify()
         self.predictor._verify()
 
     def forward(self, tokens, inference=False):
@@ -45,16 +45,10 @@ class Transformer(nn.Module):
 
         embeddings = self.encoder(tokens)
 
-        for blocks, perceptron in zip(self.blocks, self.perceptrons):
+        for heads, perceptron in zip(self.heads, self.perceptrons):
 
-            new_embeddings = embeddings
-
-            for block in blocks:
-
-                new_embeddings = new_embeddings + block(embeddings)
+            embeddings = perceptron(embeddings + torch.cat([head(embeddings) for head in heads], dim=-1))
             
-            embeddings = perceptron(new_embeddings)
-
         logits = self.predictor(embeddings if not inference else embeddings[:, -1, :])
 
         if not inference:
@@ -106,7 +100,7 @@ class TokenEncoder(nn.Module):
 
         return self.embedding_table(tokens) + self.positional_encoding[:current_context_size]
     
-class SelfAttentionBlock(nn.Module):
+class SelfAttentionHead(nn.Module):
     def __init__(self):
 
         super().__init__()
@@ -126,7 +120,7 @@ class SelfAttentionBlock(nn.Module):
         )
         
         self.value_maker = nn.Sequential(
-            nn.Linear(embedding_size, embedding_size)
+            nn.Linear(embedding_size, head_size)
         )
       
         self.register_buffer(
@@ -138,7 +132,7 @@ class SelfAttentionBlock(nn.Module):
 
         assert(self.key_maker[0].weight.shape == (key_size, embedding_size))
         assert(self.query_maker[0].weight.shape == (key_size, embedding_size))
-        assert(self.value_maker[0].weight.shape == (embedding_size, embedding_size))
+        assert(self.value_maker[0].weight.shape == (head_size, embedding_size))
         
     def forward(self, embeddings):
 
