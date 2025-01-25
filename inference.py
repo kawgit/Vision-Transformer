@@ -14,7 +14,10 @@ transformer = load_transformer(Transformer)
 tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
 text_tokens = tokenizer.encode(text)
 
-for new_token in transformer.generate(text_tokens, 100):
+for new_token in transformer.generate(text_tokens, 1000):
     text_tokens.append(new_token)
-    print("\n\n\n\n\n\n\n\n\n\n")
-    print(tokenizer.decode(text_tokens))
+    print(tokenizer.decode([new_token]), end='')
+
+print("\n" * 100)
+print("Final Output:")
+print(tokenizer.decode(text_tokens))
