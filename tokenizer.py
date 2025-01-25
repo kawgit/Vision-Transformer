@@ -2,7 +2,7 @@
 
 import random
 
-from settings import *
+from settings import vocab_size, dataset_name
 from tqdm import tqdm
 from utils import load_file, pickle_save
 

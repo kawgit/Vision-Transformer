@@ -6,7 +6,7 @@ import torch.nn.functional as functional
 import torch.optim as optim
 
 from dataset import load_dataset
-from settings import *
+from settings import vocab_size, batch_size, learning_rate, epochs
 from trainer import Trainer
 from transformer import Transformer
 from utils import format_number, load_transformer
@@ -39,9 +39,9 @@ trainer = Trainer(
     transformer,
     DataLoader(dataset, batch_size, shuffle=True),
     criterion,
-    optim.AdamW(transformer.parameters(), lr=3e-4),
+    optim.AdamW(transformer.parameters(), lr=learning_rate),
     after_batch,
     after_epoch
 )
 
-trainer.fit(10)
+trainer.fit(epochs)

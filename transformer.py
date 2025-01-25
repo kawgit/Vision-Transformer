@@ -5,9 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as functional
 
 from device import device
-from settings import *
-from tokenizer import Tokenizer
-from utils import pickle_load
+from settings import vocab_size, context_size, embedding_size, key_size, num_layers, layer_size
 
 class Transformer(nn.Module):
     
@@ -64,26 +62,18 @@ class Transformer(nn.Module):
         
         return functional.softmax(logits, dim=-1).cpu().detach()
         
-    def generate(self, seed, num_new_tokens):
+    def generate(self, seed_tokens, num_new_tokens):
 
         self.eval()
 
-        if not hasattr(self, 'tokenizer'):
-            self.tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
-
-        text_tokens = self.tokenizer.encode(seed)
-
         for i in range(num_new_tokens):
 
-            input = torch.tensor(text_tokens[-context_size:]).to(device).reshape(1, -1)
+            input = torch.tensor(seed_tokens[-context_size:]).to(device).reshape(1, -1)
             output = self.forward(input, inference=True).reshape(-1).numpy()
 
             new_token = np.random.choice(range(vocab_size), p=output)
-            new_bytes = self.tokenizer.decode_bytes([new_token])
-
-            text_tokens.append(new_token)
-
-            yield new_bytes
+            seed_tokens.append(new_token)
+            yield new_token
 
 class TokenEncoder(nn.Module):
 

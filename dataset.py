@@ -3,7 +3,7 @@ import numpy as np
 import os
 import torch
 
-from settings import *
+from settings import context_size, dataset_name
 from tokenizer import Tokenizer
 from utils import load_file, pickle_load
 

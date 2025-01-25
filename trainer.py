@@ -48,7 +48,7 @@ class Trainer:
                 "learning_rate": self.optimizer.param_groups[0]['lr'],
                 "architecture": "transformer",
                 "dataset": dataset_name,
-                "epochs": 10,
+                "epochs": num_epochs,
             }
         )
 
