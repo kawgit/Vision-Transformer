@@ -1,9 +1,13 @@
 import math
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as functional
 
+from device import device
 from settings import *
+from tokenizer import Tokenizer
+from utils import make_or_load_model, pickle_load
 
 class Transformer(nn.Module):
     
@@ -58,7 +62,28 @@ class Transformer(nn.Module):
         if not inference:
             return logits
         
-        return functional.softmax(logits, dim=-1).cpu()
+        return functional.softmax(logits, dim=-1).cpu().detach()
+        
+    def generate(self, seed, num_new_tokens):
+
+        self.eval()
+
+        if not hasattr(self, 'tokenizer'):
+            self.tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
+
+        text_tokens = self.tokenizer.encode(seed)
+
+        for i in range(num_new_tokens):
+
+            input = torch.tensor(text_tokens[-context_size:]).to(device).reshape(1, -1)
+            output = self.forward(input, inference=True).reshape(-1).numpy()
+
+            new_token = np.random.choice(range(vocab_size), p=output)
+            new_bytes = self.tokenizer.decode_bytes([new_token])
+
+            text_tokens.append(new_token)
+
+            yield new_bytes
 
 class TokenEncoder(nn.Module):
 

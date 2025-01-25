@@ -88,8 +88,8 @@ class Tokenizer:
                         break
 
         return text_indexes
-
-    def decode(self, text_indexes):
+    
+    def decode_bytes(self, text_indexes):
 
         self.verify()
 
@@ -98,7 +98,13 @@ class Tokenizer:
         for index in text_indexes:
             text_bytes += self.itob[index]
         
-        return text_bytes.decode("utf-8")
+        return text_bytes
+
+    def decode(self, text_indexes):
+
+        self.verify()
+
+        return self.decode_bytes(text_indexes).decode()
     
     def verify(self):
         assert(len(self.btoi) == vocab_size)
