@@ -1,6 +1,6 @@
 from settings import *
+from tokenizer import *
 from transformer import Transformer
-from tokenizer import Tokenizer
 from utils import load_transformer
 
 text = """More worthier than their voices. They know the corn

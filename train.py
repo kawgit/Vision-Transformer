@@ -1,8 +1,7 @@
-import torch
 from torch.utils.data import DataLoader
 import os
 import time
-import torch.nn as nn
+import torch
 import torch.nn.functional as functional
 import torch.optim as optim
 
@@ -23,6 +22,10 @@ def criterion(output_probs, expected_indexes):
 def after_batch(trainer, firing):
 
     print(f'Epoch: {trainer.epoch_idx}, Batch: {trainer.batch_idx}, Epoch Loss: {format_number(trainer.epoch_loss)}, Batch Loss: {format_number(trainer.batch_loss)}')
+
+    if firing:
+        os.makedirs('transformers', exist_ok=True)
+        torch.save(transformer.state_dict(), os.path.join('transformers', f"{round(time.time())}_{format_number(trainer.epoch_loss)}.pt"))
 
 def after_epoch(trainer, firing):
 
