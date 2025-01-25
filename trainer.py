@@ -1,5 +1,8 @@
 import time
+import wandb
+
 from device import device
+from settings import dataset_name
 
 class Scheduler:
     def __init__(self, action, delay):
@@ -23,8 +26,8 @@ class Trainer:
         self.dataloader = dataloader
         self.criterion = criterion
         self.optimizer = optimizer
-        self.after_batch_scheduler = Scheduler(after_batch, .5)
-        self.after_epoch_scheduler = Scheduler(after_epoch, 5)
+        self.after_batch_scheduler = Scheduler(after_batch, 30)
+        self.after_epoch_scheduler = Scheduler(after_epoch, 30)
 
         self.batch_xs = None
         self.batch_ys = None
@@ -38,6 +41,16 @@ class Trainer:
         self.epoch_losses = []
 
     def fit(self, num_epochs):
+
+        wandb.init(
+            project="transformer",
+            config={
+                "learning_rate": self.optimizer.param_groups[0]['lr'],
+                "architecture": "transformer",
+                "dataset": dataset_name,
+                "epochs": 10,
+            }
+        )
 
         self.model.train()
         self.epoch_losses = []
@@ -55,12 +68,12 @@ class Trainer:
 
                 self.batch_outputs = self.model(self.batch_xs)
 
-                assert(self.batch_outputs.shape == self.batch_ys.shape)
-
                 loss = self.criterion(self.batch_outputs, self.batch_ys)
                 
                 loss.backward()
                 self.optimizer.step()
+                
+                wandb.log({"loss": loss})
                 
                 self.batch_loss = loss.item()
                 self.batch_losses.append(self.batch_loss)

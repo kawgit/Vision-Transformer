@@ -74,16 +74,18 @@ class Tokenizer:
 
         text_bytes = bytes(text, 'utf-8')
         text_indexes = []
-        
-        i = 0
-        while i < len(text_bytes):
 
-            for token_index, token_bytes in reversed(self.itob.items()):
+        with tqdm(total=len(text_bytes)) as pbar:
+            i = 0
+            while i < len(text_bytes):
 
-                if i + len(token_bytes) <= len(text_bytes) and text_bytes[i:i+len(token_bytes)] == token_bytes and random.random() > dropout:
-                    text_indexes.append(token_index)
-                    i += len(token_bytes)
-                    break
+                for token_index, token_bytes in reversed(self.itob.items()):
+
+                    if i + len(token_bytes) <= len(text_bytes) and text_bytes[i:i+len(token_bytes)] == token_bytes and random.random() > dropout:
+                        text_indexes.append(token_index)
+                        i += len(token_bytes)
+                        pbar.update(len(token_bytes))
+                        break
 
         return text_indexes
 
@@ -101,7 +103,6 @@ class Tokenizer:
     def verify(self):
         assert(len(self.btoi) == vocab_size)
         assert(len(self.itob) == vocab_size)
-
 
 if __name__ == "__main__":
     
