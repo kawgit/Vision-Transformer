@@ -7,16 +7,16 @@ from tokenizer import Tokenizer
 from transformer import Transformer
 from utils import make_or_load_model, pickle_load
 
-transformer = make_or_load_model(Transformer)
-transformer.eval()
-
-tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
-
 seed = """More worthier than their voices. They know the corn
 Was not our recompense, resting well assured
 That ne'er did service for't: being press'd to the war,
 Even when the navel of the state was touch'd,
 They would not thread the gates. This kind of service"""
+
+transformer = make_or_load_model(Transformer)
+transformer.eval()
+
+tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
 text_indexes = tokenizer.encode(seed)
 
 print(seed, end='')
