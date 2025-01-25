@@ -53,7 +53,7 @@ class Transformer(nn.Module):
 
             for block in blocks:
 
-                new_embeddings = new_embeddings + block(embeddings) / 10
+                new_embeddings = new_embeddings + block(embeddings)
             
             embeddings = perceptron(new_embeddings)
 
