@@ -7,7 +7,7 @@ import torch.nn.functional as functional
 from device import device
 from settings import *
 from tokenizer import Tokenizer
-from utils import make_or_load_model, pickle_load
+from utils import load_transformer, pickle_load
 
 class Transformer(nn.Module):
     

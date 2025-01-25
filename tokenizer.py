@@ -4,7 +4,7 @@ import random
 
 from settings import *
 from tqdm import tqdm
-from utils import load_file_as_string, pickle_save
+from utils import load_file, pickle_save
 
 class Tokenizer:
 
@@ -112,7 +112,7 @@ class Tokenizer:
 
 if __name__ == "__main__":
     
-    text = load_file_as_string(f"datasets/{dataset_name}.txt")
+    text = load_file(f"datasets/{dataset_name}.txt")
 
     tokenizer = Tokenizer()
     tokenizer.train(text)

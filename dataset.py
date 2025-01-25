@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 
 from settings import *
 from tokenizer import Tokenizer
-from utils import load_file_as_string, pickle_load
+from utils import load_file, pickle_load
 
 class TransformerDataset(Dataset):
 
@@ -26,7 +26,7 @@ def load_dataset():
     if os.path.exists(f"datasets/{dataset_name}.npy"):
         text_indexes = torch.tensor(np.load(f"datasets/{dataset_name}.npy"))
     else:
-        text = load_file_as_string(f"datasets/{dataset_name}.txt")
+        text = load_file(f"datasets/{dataset_name}.txt")
         tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
         text_indexes = torch.tensor(tokenizer.encode(text))
 

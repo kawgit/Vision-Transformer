@@ -10,11 +10,11 @@ from dataset import load_dataset
 from settings import *
 from trainer import Trainer
 from transformer import Transformer
-from utils import format_number, make_or_load_model
+from utils import format_number, load_transformer
 
 dataset = load_dataset()
 
-transformer = make_or_load_model(Transformer)
+transformer = load_transformer(Transformer)
 
 def criterion(output_probs, expected_indexes):
 

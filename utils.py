@@ -6,7 +6,7 @@ import torch
 from device import device
 from settings import *
 
-def load_file_as_string(file_path):
+def load_file(file_path):
     with open(file_path, 'r', encoding='utf-8') as file:
         return file.read()
     
@@ -27,7 +27,7 @@ def get_last_file(directory_path):
     files.sort()
     return files[-1] if files else None
 
-def make_or_load_model(model_class, *args, **kwargs):
+def load_transformer(model_class, *args, **kwargs):
 
     model = model_class(*args, **kwargs)
     model_path = get_last_file('transformers')
