@@ -12,14 +12,14 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-dataset_name = "harrypotter1"
+dataset_name = "harrypotterall"
 
 vocab_size = 10000
 
 context_size = 100
-embedding_size = 512
+embedding_size = 1024
 key_size = 16
-num_layers = 2
+num_layers = 8
 layer_size = 8
 
 head_size = embedding_size // layer_size

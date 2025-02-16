@@ -32,9 +32,12 @@ assert(mode in ["append", "reprint"])
 transformer = load_transformer(Transformer)
 
 tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
-text_tokens = tokenizer.encode(text)
+text_tokens = tokenizer.encode(text)[:-5]
 
-for new_token in transformer.generate(text_tokens, 100):
+if mode == "append":
+    print(tokenizer.decode(text_tokens), end='')
+
+for new_token in transformer.generate(text_tokens, 300):
     text_tokens.append(new_token)
 
     if mode == "append":
@@ -42,3 +45,5 @@ for new_token in transformer.generate(text_tokens, 100):
     else:
         print("=" * 100)
         print(tokenizer.decode(text_tokens))
+
+print("")

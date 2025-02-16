@@ -27,41 +27,14 @@ class Transformer(nn.Module):
         super().__init__()
 
         self.encoder = TokenEncoder()
-
-        self.heads = nn.ModuleList([
-                nn.ModuleList([
-                    SelfAttentionHead() for j in range(layer_size)
-                ]) for i in range(num_layers)
-            ])
-        
-        self.perceptrons = nn.ModuleList([
-                nn.Sequential(
-                    nn.LayerNorm(embedding_size),
-                    nn.Linear(embedding_size, embedding_size),
-                    nn.ReLU(),
-                    nn.Linear(embedding_size,embedding_size),
-                    nn.ReLU()
-                ) for i in range(num_layers)
-            ])
-        
+        self.layers = nn.Sequential(*[TransformerLayer() for i in range(num_layers)])
         self.predictor = TokenPredictor()
-
-    def _verify(self):
-        self.encoder._verify()
-        for heads in self.heads:
-            for head in heads:
-                head._verify()
-        self.predictor._verify()
 
     def forward(self, tokens):
 
-        self._verify()
-
         embeddings = self.encoder(tokens)
 
-        for heads, perceptron in zip(self.heads, self.perceptrons):
-
-            embeddings = perceptron(embeddings + torch.cat([head(embeddings) for head in heads], dim=-1))
+        embeddings = self.layers(embeddings)
             
         logits = self.predictor(embeddings if self.training else embeddings[:, -1, :])
 
@@ -101,11 +74,6 @@ class TokenEncoder(nn.Module):
             "positional_encoding",
             positional_encoding
         )
-
-    def _verify(self):
-        
-        assert(self.embedding_table.weight.shape == (vocab_size, embedding_size))
-        assert(self.positional_encoding.shape == (context_size, embedding_size))
         
     def forward(self, tokens):
 
@@ -114,6 +82,38 @@ class TokenEncoder(nn.Module):
 
         return self.embedding_table(tokens) + self.positional_encoding[:current_context_size]
     
+class TransformerLayer(nn.Module):
+    def __init__(self):
+
+        super().__init__()
+
+        self.heads = nn.ModuleList([
+                SelfAttentionHead() for j in range(layer_size)
+            ])
+        self.attention_norm = nn.LayerNorm((embedding_size,))
+
+        self.mlp = nn.Sequential(
+                nn.Linear(embedding_size, embedding_size),
+                nn.ReLU(),
+                nn.Linear(embedding_size,embedding_size)
+            )
+        self.mlp_norm = nn.LayerNorm((embedding_size,))
+
+    def forward(self, embeddings):
+
+        embeddings = embeddings + torch.cat([head(embeddings) for head in self.heads], dim=-1)
+        embeddings = self.attention_norm(embeddings)
+        embeddings = embeddings + self.mlp(embeddings)
+        embeddings = self.mlp_norm(embeddings)
+
+        return embeddings
+            
+
+
+        
+
+
+
 class SelfAttentionHead(nn.Module):
     def __init__(self):
 
@@ -137,12 +137,6 @@ class SelfAttentionHead(nn.Module):
         )
 
         assert(not torch.isnan(self.causal_mask).any())
-
-    def _verify(self):
-
-        assert(self.key_maker[0].weight.shape == (key_size, embedding_size))
-        assert(self.query_maker[0].weight.shape == (key_size, embedding_size))
-        assert(self.value_maker[0].weight.shape == (head_size, embedding_size))
         
     def forward(self, embeddings):
 
@@ -173,10 +167,6 @@ class TokenPredictor(nn.Module):
             nn.Linear(embedding_size, vocab_size)
         )
         self.predictor2 = nn.Softmax(dim=-1)
-
-    def _verify(self):
-
-        assert(self.predictor[0].weight.shape == (vocab_size, embedding_size))
 
     def forward(self, embeddings):
 

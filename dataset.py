@@ -42,7 +42,7 @@ def load_dataset():
     else:
         text = load_file(f"datasets/{dataset_name}.txt")
         tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
-        text_indexes = tokenizer.encode(text)
+        text_indexes = tokenizer.encode(text, use_pbar=True)
         np.save(f"datasets/{dataset_name}.npy", text_indexes)
 
     return TransformerDataset(torch.tensor(text_indexes))

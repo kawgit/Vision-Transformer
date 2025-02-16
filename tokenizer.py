@@ -76,27 +76,30 @@ class Tokenizer:
         print("Training complete.")
         print(f"Compression ratio: {len(text) / len(text_indexes)}")
 
-    def encode(self, text, dropout=.1):
+    def encode(self, text, dropout=.1, use_pbar=False):
 
         self.verify()
 
         text_bytes = bytes(text, 'utf-8')
         text_indexes = []
 
-        with tqdm(total=len(text_bytes)) as pbar:
-            i = 0
-            while i < len(text_bytes):
+        pbar = tqdm(total=len(text_bytes)) if use_pbar else None
+        i = 0
 
-                for token_index, token_bytes in reversed(self.itob.items()):
-
-                    if i + len(token_bytes) <= len(text_bytes) and text_bytes[i:i+len(token_bytes)] == token_bytes and random.random() > dropout:
-                        text_indexes.append(token_index)
-                        i += len(token_bytes)
+        while i < len(text_bytes):
+            for token_index, token_bytes in reversed(self.itob.items()):
+                if i + len(token_bytes) <= len(text_bytes) and text_bytes[i:i+len(token_bytes)] == token_bytes and random.random() > dropout:
+                    text_indexes.append(token_index)
+                    i += len(token_bytes)
+                    if pbar:
                         pbar.update(len(token_bytes))
-                        break
+                    break
+
+        if pbar:
+            pbar.close()
 
         return text_indexes
-    
+        
     def decode_bytes(self, text_indexes):
 
         self.verify()

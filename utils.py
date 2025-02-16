@@ -20,7 +20,7 @@ import torch
 from device import device
 
 def load_file(file_path):
-    with open(file_path, 'r', encoding='utf-8') as file:
+    with open(file_path, 'r', encoding='utf-8', errors="replace") as file:
         return file.read()
     
 def pickle_save(thing, path):
