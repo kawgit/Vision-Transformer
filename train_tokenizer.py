@@ -12,20 +12,18 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-dataset_name = "harrypotter1"
+from settings import *
+from tokenizer import Tokenizer
+from utils import load_file, pickle_save
 
-vocab_size = 10000
+if __name__ == "__main__":
+    
+    text = load_file(f"datasets/{dataset_name}.txt")
 
-context_size = 100
-embedding_size = 512
-key_size = 16
-num_layers = 2
-layer_size = 8
+    tokenizer = Tokenizer()
+    tokenizer.train(text)
 
-head_size = embedding_size // layer_size
+    pickle_save(tokenizer, f"tokenizers/{dataset_name}.pickle")
 
-assert(head_size * layer_size == embedding_size)
 
-batch_size = 16
-learning_rate = 3e-4
-epochs = 10
+

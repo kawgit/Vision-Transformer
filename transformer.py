@@ -53,7 +53,7 @@ class Transformer(nn.Module):
                 head._verify()
         self.predictor._verify()
 
-    def forward(self, tokens, inference=False):
+    def forward(self, tokens):
 
         self._verify()
 
@@ -63,9 +63,9 @@ class Transformer(nn.Module):
 
             embeddings = perceptron(embeddings + torch.cat([head(embeddings) for head in heads], dim=-1))
             
-        logits = self.predictor(embeddings if not inference else embeddings[:, -1, :])
+        logits = self.predictor(embeddings if self.training else embeddings[:, -1, :])
 
-        if not inference:
+        if self.training:
             return logits
         
         return functional.softmax(logits, dim=-1).cpu().detach()
@@ -77,7 +77,7 @@ class Transformer(nn.Module):
         for i in range(num_new_tokens):
 
             input = torch.tensor(seed_tokens[-context_size:]).to(device).reshape(1, -1)
-            output = self.forward(input, inference=True).reshape(-1).numpy()
+            output = self.forward(input).reshape(-1).numpy()
 
             new_token = np.random.choice(range(vocab_size), p=output)
             seed_tokens.append(new_token)
@@ -121,26 +121,22 @@ class SelfAttentionHead(nn.Module):
 
         self.key_maker = nn.Sequential(
             nn.Linear(embedding_size, key_size),
-            nn.ReLU(),
-            nn.Linear(key_size, key_size),
-            nn.ReLU()
         )
         
         self.query_maker = nn.Sequential(
             nn.Linear(embedding_size, key_size),
-            nn.ReLU(),
-            nn.Linear(key_size, key_size),
-            nn.ReLU()
         )
         
         self.value_maker = nn.Sequential(
-            nn.Linear(embedding_size, head_size)
+            nn.Linear(embedding_size, head_size),
         )
       
         self.register_buffer(
             "causal_mask",
-            torch.tril(torch.ones(context_size, context_size)).float() * -10000000000
+            torch.triu(torch.ones(context_size, context_size).float() * -torch.inf, 1)
         )
+
+        assert(not torch.isnan(self.causal_mask).any())
 
     def _verify(self):
 
@@ -153,19 +149,18 @@ class SelfAttentionHead(nn.Module):
         current_context_size = embeddings.shape[1]
         assert(current_context_size <= context_size)
 
-        keys = self.key_maker(embeddings)
-        queries = self.query_maker(embeddings)
-        values = self.value_maker(embeddings)
+        keys = self.key_maker(embeddings) # B, Ck, K
+        queries = self.query_maker(embeddings) # B, Cq, K
+        values = self.value_maker(embeddings) # B, Ck, V
 
-        attention_scores = torch.bmm(queries, keys.transpose(1, 2))
-        attention_scores = attention_scores / (key_size ** 0.5)
+        attention_scores = torch.bmm(queries, keys.transpose(1, 2)) # B, Cq, K + B, K, Ck -> B, Cq, Ck
+        attention_scores = attention_scores / math.sqrt(key_size)
       
         causal_mask = self.causal_mask[:current_context_size, :current_context_size]
         attention_scores = attention_scores + causal_mask
 
-        attention_weights = functional.softmax(attention_scores, dim=-1)
-
-        output = torch.bmm(attention_weights, values)
+        attention_weights = functional.softmax(attention_scores, dim=-1) # B, Cq, Ck
+        output = torch.bmm(attention_weights, values) # B, Cq, Ck + B, Ck, V -> B, Cq, V
 
         return output
 

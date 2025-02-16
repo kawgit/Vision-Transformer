@@ -14,9 +14,8 @@
 
 import random
 
-from settings import vocab_size, dataset_name
+from settings import vocab_size
 from tqdm import tqdm
-from utils import load_file, pickle_save
 
 class Tokenizer:
 
@@ -118,15 +117,3 @@ class Tokenizer:
     def verify(self):
         assert(len(self.btoi) == vocab_size)
         assert(len(self.itob) == vocab_size)
-
-if __name__ == "__main__":
-    
-    text = load_file(f"datasets/{dataset_name}.txt")
-
-    tokenizer = Tokenizer()
-    tokenizer.train(text)
-
-    pickle_save(tokenizer, f"tokenizers/{dataset_name}.pickle")
-
-
-

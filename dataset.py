@@ -38,10 +38,11 @@ class TransformerDataset(Dataset):
 def load_dataset():
 
     if os.path.exists(f"datasets/{dataset_name}.npy"):
-        text_indexes = torch.tensor(np.load(f"datasets/{dataset_name}.npy"))
+        text_indexes = np.load(f"datasets/{dataset_name}.npy")
     else:
         text = load_file(f"datasets/{dataset_name}.txt")
         tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
-        text_indexes = torch.tensor(tokenizer.encode(text))
+        text_indexes = tokenizer.encode(text)
+        np.save(f"datasets/{dataset_name}.npy", text_indexes)
 
-    return TransformerDataset(text_indexes)
+    return TransformerDataset(torch.tensor(text_indexes))

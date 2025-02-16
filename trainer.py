@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import time
+import torch
 import wandb
 
 from device import device
@@ -60,7 +61,7 @@ class Trainer:
             project="transformer",
             config={
                 "learning_rate": self.optimizer.param_groups[0]['lr'],
-                "architecture": "transformer",
+                "architecture": "transformer-{vocab_size}-{embedding_size}-{num_layers}x{layer_size}",
                 "dataset": dataset_name,
                 "epochs": num_epochs,
             }

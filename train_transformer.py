@@ -26,6 +26,7 @@ from transformer import Transformer
 from utils import format_number, load_transformer
 
 dataset = load_dataset()
+torch.autograd.set_detect_anomaly(True)
 
 transformer = load_transformer(Transformer)
 
