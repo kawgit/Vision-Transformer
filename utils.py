@@ -55,15 +55,22 @@ def split_into_segments(text):
     
     segments = []
     
-    last_i = 0
+    start = 0
 
     for i, (a, b) in enumerate(zip(text[:-1], text[1:])):
 
-        if i != 0 and a.isspace() and not b.isspace():
-            segments.append(text[last_i:i])
-            last_i = i
+        if i == start:
+            continue
+
+        if a.isspace() and not b.isspace():
+            segments.append(text[start:i])
+            start = i
+
+        if a.isalnum() and not b.isalnum():
+            segments.append(text[start:i+1])
+            start = i + 1
 
     else:
-        segments.append(text[last_i:].rstrip())
+        segments.append(text[start:])
 
     return segments

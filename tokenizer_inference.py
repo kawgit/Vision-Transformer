@@ -24,7 +24,8 @@ Snape would never know what had happened.
 """
 
 tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
-text_indexes = tokenizer.encode(text)
+
+text_indexes = tokenizer.encode(text, dropout=0)
 
 for token_index in text_indexes:
 
@@ -36,6 +37,4 @@ for token_index in text_indexes:
         msg = str(token_bytes)
 
     print(msg)
-
-
 
