@@ -12,6 +12,8 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+import os
+
 dataset_name = "harrypotter1"
 
 vocab_size = 10000
@@ -22,8 +24,11 @@ head_size = 128
 layer_size = 8
 hidden_size = 2048
 embedding_size = head_size * layer_size
-num_layers = 2
+num_layers = 6
 
-batch_size = 32
+batch_size = 16
 learning_rate = 3e-4
 epochs = 10
+
+model_name = f"{dataset_name}_c{context_size}_m{embedding_size}_k{key_size}_h{head_size}_l{num_layers}_v{hidden_size}"
+model_path = os.path.join('transformers', model_name + '.pt')

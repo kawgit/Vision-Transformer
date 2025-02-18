@@ -41,7 +41,7 @@ class Trainer:
         self.dataloader = dataloader
         self.criterion = criterion
         self.optimizer = optimizer
-        self.after_batch_scheduler = Scheduler(after_batch, 30)
+        self.after_batch_scheduler = Scheduler(after_batch, 10)
         self.after_epoch_scheduler = Scheduler(after_epoch, 30)
 
         self.batch_xs = None

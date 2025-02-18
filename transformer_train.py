@@ -20,7 +20,7 @@ import torch.nn.functional as functional
 import torch.optim as optim
 
 from dataset import load_dataset
-from settings import vocab_size, batch_size, learning_rate, epochs
+from settings import vocab_size, batch_size, learning_rate, epochs, model_path
 from trainer import Trainer
 from transformer import Transformer
 from utils import format_number, load_transformer
@@ -39,16 +39,18 @@ def after_batch(trainer, firing):
     print(f'Epoch: {trainer.epoch_idx}, Batch: {trainer.batch_idx}, Epoch Loss: {format_number(trainer.epoch_loss)}, Batch Loss: {format_number(trainer.batch_loss)}')
 
     if firing:
+        print("Saving model...")
         os.makedirs('transformers', exist_ok=True)
-        torch.save(transformer.state_dict(), os.path.join('transformers', f"{round(time.time())}_{format_number(trainer.epoch_loss)}.pt"))
+        torch.save(transformer.state_dict(), model_path)
 
 def after_epoch(trainer, firing):
 
     print(f'Epoch: {trainer.epoch_idx}, Epoch Loss: {trainer.epoch_loss}')
     
     if firing:
+        print("Saving model...")
         os.makedirs('transformers', exist_ok=True)
-        torch.save(transformer.state_dict(), os.path.join('transformers', f"{round(time.time())}_{format_number(trainer.epoch_loss)}.pt"))
+        torch.save(transformer.state_dict(), model_path)
 
 trainer = Trainer(
     transformer,
