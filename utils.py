@@ -50,3 +50,20 @@ def load_transformer(model_class, *args, **kwargs):
         model.load_state_dict(torch.load(model_path, weights_only=True), strict=False)
     
     return model.to(device)
+
+def split_into_segments(text):
+    
+    segments = []
+    
+    last_i = 0
+
+    for i, (a, b) in enumerate(zip(text[:-1], text[1:])):
+
+        if i != 0 and a.isspace() and not b.isspace():
+            segments.append(text[last_i:i])
+            last_i = i
+
+    else:
+        segments.append(text[last_i:].rstrip())
+
+    return segments

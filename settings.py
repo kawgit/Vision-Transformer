@@ -12,7 +12,7 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-dataset_name = "harrypotterall"
+dataset_name = "harrypotter1"
 
 vocab_size = 10000
 
