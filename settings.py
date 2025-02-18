@@ -17,15 +17,13 @@ dataset_name = "harrypotterall"
 vocab_size = 10000
 
 context_size = 100
-embedding_size = 1024
-key_size = 16
-num_layers = 8
+key_size = 128
+head_size = 128
 layer_size = 8
+hidden_size = 2048
+embedding_size = head_size * layer_size
+num_layers = 2
 
-head_size = embedding_size // layer_size
-
-assert(head_size * layer_size == embedding_size)
-
-batch_size = 16
+batch_size = 32
 learning_rate = 3e-4
 epochs = 10

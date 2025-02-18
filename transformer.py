@@ -19,7 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as functional
 
 from device import device
-from settings import vocab_size, context_size, embedding_size, key_size, num_layers, layer_size, head_size
+from settings import vocab_size, context_size, embedding_size, key_size, num_layers, layer_size, head_size, hidden_size
 
 class Transformer(nn.Module):
     
@@ -93,9 +93,9 @@ class TransformerLayer(nn.Module):
         self.attention_norm = nn.LayerNorm((embedding_size,))
 
         self.mlp = nn.Sequential(
-                nn.Linear(embedding_size, embedding_size),
+                nn.Linear(embedding_size, hidden_size),
                 nn.ReLU(),
-                nn.Linear(embedding_size,embedding_size)
+                nn.Linear(hidden_size, embedding_size)
             )
         self.mlp_norm = nn.LayerNorm((embedding_size,))
 
@@ -107,12 +107,6 @@ class TransformerLayer(nn.Module):
         embeddings = self.mlp_norm(embeddings)
 
         return embeddings
-            
-
-
-        
-
-
 
 class SelfAttentionHead(nn.Module):
     def __init__(self):
