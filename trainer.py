@@ -17,7 +17,7 @@ import torch
 import wandb
 
 from device import device
-from settings import dataset_name
+from settings import dataset_name, model_name
 
 class Scheduler:
     def __init__(self, action, delay):
@@ -58,10 +58,10 @@ class Trainer:
     def fit(self, num_epochs):
 
         wandb.init(
+            name=model_name,
             project="transformer",
             config={
                 "learning_rate": self.optimizer.param_groups[0]['lr'],
-                "architecture": "transformer-{vocab_size}-{embedding_size}-{num_layers}x{layer_size}",
                 "dataset": dataset_name,
                 "epochs": num_epochs,
             }

@@ -17,10 +17,10 @@ from tokenizer import Tokenizer
 from utils import pickle_load, split_into_segments
 
 text = """
-It took perhaps thirty seconds for Snape to realize that he was on fire.
-A sudden yelp told her she had done her job. Scooping the fire off him
-into a little jar in her pocket, she scrambled back along the row --
-Snape would never know what had happened.
+MENENIUS:
+There was a time when all the body's members
+Rebell'd against the belly, thus accused it:
+That only like a gulf it did remain
 """
 
 tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")

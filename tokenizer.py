@@ -189,10 +189,10 @@ class Tokenizer:
         text_bytes = b''
         
         for index in text_indexes:
-            text_bytes += self.itob[index]
+            text_bytes += self.itob[index] if index < len(self.itob) else b" "
         
         return text_bytes
 
     def decode(self, text_indexes):
 
-        return self.decode_bytes(text_indexes).decode()
+        return self.decode_bytes(text_indexes).decode(errors='ignore')

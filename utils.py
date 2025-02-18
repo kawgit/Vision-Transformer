@@ -61,7 +61,7 @@ def split_into_segments(text):
             segments.append(text[start:i])
             start = i
 
-        if a.isalnum() and not b.isalnum():
+        if a.isalnum() and not b.isalnum() and not b == "'" and not b == "’":
             segments.append(text[start:i+1])
             start = i + 1
 

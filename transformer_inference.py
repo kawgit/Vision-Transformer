@@ -19,12 +19,11 @@ from tokenizer import Tokenizer
 from transformer import Transformer
 from utils import load_transformer, pickle_load
 
-text = """But on the edge of town, drills were driven out of his mind by something
-else. As he sat in the usual morning traffic jam, he couldn't help
-noticing that there seemed to be a lot of strangely dressed people
-about. People in cloaks. Mr. Dursley couldn't bear people who dressed in
-funny clothes -- the getups you saw on young people! He supposed this
-was some stupid new fashion."""
+text = """
+It took perhaps thirty seconds for Snape to realize that he was on fire.
+A sudden yelp told her she had done her job. Scooping the fire off him
+into a little jar in her pocket, she scrambled back along the row --
+Snape would never know what had happened."""
 mode = "append"
 
 assert(mode in ["append", "reprint"])

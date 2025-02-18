@@ -86,25 +86,25 @@ class TransformerLayer(nn.Module):
     def __init__(self):
 
         super().__init__()
-
+            
+        self.attention_norm = nn.LayerNorm((embedding_size,))
         self.heads = nn.ModuleList([
                 SelfAttentionHead() for j in range(layer_size)
             ])
-        self.attention_norm = nn.LayerNorm((embedding_size,))
 
+        self.mlp_norm = nn.LayerNorm((embedding_size,))
         self.mlp = nn.Sequential(
                 nn.Linear(embedding_size, hidden_size),
                 nn.ReLU(),
                 nn.Linear(hidden_size, embedding_size)
             )
-        self.mlp_norm = nn.LayerNorm((embedding_size,))
 
     def forward(self, embeddings):
 
-        embeddings = embeddings + torch.cat([head(embeddings) for head in self.heads], dim=-1)
         embeddings = self.attention_norm(embeddings)
-        embeddings = embeddings + self.mlp(embeddings)
+        embeddings = embeddings + torch.cat([head(embeddings) for head in self.heads], dim=-1)
         embeddings = self.mlp_norm(embeddings)
+        embeddings = embeddings + self.mlp(embeddings)
 
         return embeddings
 

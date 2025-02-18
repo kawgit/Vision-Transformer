@@ -18,13 +18,13 @@ dataset_name = "harrypotter1"
 
 vocab_size = 10000
 
-context_size = 100
+context_size = 500
 key_size = 128
 head_size = 128
 layer_size = 8
 hidden_size = 2048
 embedding_size = head_size * layer_size
-num_layers = 6
+num_layers = 2
 
 batch_size = 16
 learning_rate = 3e-4
