@@ -26,6 +26,8 @@ hidden_size = 2048
 embedding_size = head_size * layer_size
 num_layers = 2
 
+assert(key_size % 2 == 0) # Necessary condition for rotary positional encoding
+
 batch_size = 16
 learning_rate = 3e-4
 epochs = 10
