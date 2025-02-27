@@ -2,4 +2,6 @@ venv
 wandb
 __pycache__
 *.pt
+*.checkpoint
+*.checkpoint.old
 .venv-backups

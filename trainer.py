@@ -12,94 +12,84 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+from torch.nn.utils import clip_grad_norm_
+import os
 import time
 import torch
 import wandb
 
+from checkpoint import save_checkpoint
 from device import device
 from settings import dataset_name, model_name
-
-class Scheduler:
-    def __init__(self, action, delay):
-        self.time_of_last_action = 0
-        self.action = action
-        self.delay = delay
-
-    def __call__(self, trainer):
-        firing = time.time() - self.time_of_last_action > self.delay
-        
-        if firing:
-            self.time_of_last_action = time.time()
-        
-        if self.action:
-            self.action(trainer, firing)
+from utils import format_number
 
 class Trainer:
 
-    def __init__(self, model, dataloader, criterion, optimizer, after_batch, after_epoch):
-        self.model = model
-        self.dataloader = dataloader
+    def __init__(self, criterion, optimizer, scheduler):
         self.criterion = criterion
         self.optimizer = optimizer
-        self.after_batch_scheduler = Scheduler(after_batch, 10)
-        self.after_epoch_scheduler = Scheduler(after_epoch, 30)
+        self.scheduler = scheduler
+        
+        self.wandb_id = None
+        self.epoch_idx = 0
+        self.batch_idx = 0
 
-        self.batch_xs = None
-        self.batch_ys = None
-        self.batch_outputs = None
-        self.batch_index = None
-        self.batch_loss = None
-        self.epoch_index = None
-        self.epoch_loss = None
+    def fit(self, model, dataloader, num_epochs):
 
-        self.batch_losses = []
-        self.epoch_losses = []
+        if self.wandb_id == None:
 
-    def fit(self, num_epochs):
+            wandb.init(
+                project="transformer",
+                name=model_name
+            )
 
-        wandb.init(
-            name=model_name,
-            project="transformer",
-            config={
-                "learning_rate": self.optimizer.param_groups[0]['lr'],
-                "dataset": dataset_name,
-                "epochs": num_epochs,
-            }
-        )
+            self.wandb_id = wandb.run.id
 
-        self.model.train()
-        self.epoch_losses = []
+        else:
 
-        for self.epoch_idx in range(num_epochs):
+            print(f"Resuming run with id {self.wandb_id}")
 
-            epoch_loss_total = 0
-            self.batch_losses = []
+            wandb.init(
+                project="transformer",
+                id=self.wandb_id,
+                resume="must"
+            )
 
-            for self.batch_idx, (self.batch_xs, self.batch_ys) in enumerate(self.dataloader):
-                self.batch_xs = self.batch_xs.to(device)
-                self.batch_ys = self.batch_ys.to(device)
+        model.train()
+
+        print("Compiling model...")
+        compiled_model = torch.compile(model)
+
+        time_of_last_save = time.time()
+        time_between_saves = 10
+
+        for self.epoch_idx in range(self.epoch_idx, self.epoch_idx + num_epochs):
+
+            for self.batch_idx, (batch_xs, batch_ys) in enumerate(dataloader):
+                batch_xs = batch_xs.to(device)
+                batch_ys = batch_ys.to(device)
 
                 self.optimizer.zero_grad()
 
-                self.batch_outputs = self.model(self.batch_xs)
+                batch_outputs = compiled_model(batch_xs)
 
-                loss = self.criterion(self.batch_outputs, self.batch_ys)
-                
+                loss = self.criterion(batch_outputs, batch_ys)
                 loss.backward()
+                
+                if self.epoch_idx * len(dataloader) + self.batch_idx > 3000:
+                    clip_grad_norm_(compiled_model.parameters(), max_norm=1.0)
+
                 self.optimizer.step()
-                
-                wandb.log({"loss": loss})
-                
-                self.batch_loss = loss.item()
-                self.batch_losses.append(self.batch_loss)
+                self.scheduler.step()
 
-                epoch_loss_total += self.batch_loss
-                self.epoch_loss = epoch_loss_total / (self.batch_idx + 1)
+                wandb.log({"loss": loss.item(), "lr": self.scheduler.get_last_lr()[0]})
 
-                self.after_batch_scheduler(self)
+                print(f'Epoch: {self.epoch_idx} Batch: {self.batch_idx} Loss: {format_number(loss.item())} LR: {format_number(self.scheduler.get_last_lr()[0])}')
 
-            self.epoch_losses.append(self.epoch_loss)
+                if time.time() - time_of_last_save > time_between_saves:
 
-            self.after_epoch_scheduler(self)
-
-        print("Training completed")
+                    time_of_last_save = time.time()
+                    
+                    print("Saving checkpoint...")
+                    save_checkpoint(model, self)
+            

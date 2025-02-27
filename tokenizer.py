@@ -14,8 +14,9 @@
 
 import itertools
 import random
+import pickle
 
-from settings import vocab_size
+from settings import *
 from tqdm import tqdm
 from utils import split_into_segments
 
@@ -196,3 +197,13 @@ class Tokenizer:
     def decode(self, text_indexes):
 
         return self.decode_bytes(text_indexes).decode(errors='ignore')
+
+
+def load_tokenizer():
+    with open(tokenizer_path, 'rb') as handle:
+        tokenizer = pickle.load(handle)
+    return tokenizer
+
+def save_tokenizer(tokenizer):
+    with open(tokenizer_path, 'wb') as handle:
+        pickle.dump(tokenizer, handle, protocol=pickle.HIGHEST_PROTOCOL)

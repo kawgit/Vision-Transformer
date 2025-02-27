@@ -14,14 +14,14 @@
 
 from settings import *
 from tokenizer import Tokenizer
-from utils import load_file, pickle_save
+from utils import load_file, save_tokenizer
 
 text = load_file(f"datasets/{dataset_name}.txt")
 
 tokenizer = Tokenizer()
 tokenizer.train(text)
 
-pickle_save(tokenizer, f"tokenizers/{dataset_name}.pickle")
+save_tokenizer(tokenizer)
 
 
 

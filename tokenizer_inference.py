@@ -13,8 +13,8 @@
 #    limitations under the License.
 
 from settings import *
-from tokenizer import Tokenizer
-from utils import pickle_load, split_into_segments
+from tokenizer import load_tokenizer
+from utils import split_into_segments
 
 text = """
 MENENIUS:
@@ -23,7 +23,7 @@ Rebell'd against the belly, thus accused it:
 That only like a gulf it did remain
 """
 
-tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
+tokenizer = load_tokenizer()
 
 text_indexes = tokenizer.encode(text, dropout=0)
 

@@ -19,7 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as functional
 
 from device import device
-from settings import vocab_size, context_size, embedding_size, key_size, num_layers, layer_size, head_size, hidden_size
+from settings import *
 
 class Transformer(nn.Module):
 
@@ -55,10 +55,17 @@ class Transformer(nn.Module):
 
     def forward(self, tokens):
 
+        current_context_size = tokens.shape[1]
+        assert(current_context_size <= context_size)
+
+        causal_buffer = self.causal_buffer[:current_context_size, :current_context_size]
+        cos_buffer = self.cos_buffer[:current_context_size, :]
+        sin_buffer = self.sin_buffer[:current_context_size, :]
+
         embeddings = self.table(tokens)
     
         for layer in self.layers:
-            embeddings = layer(embeddings, self.causal_buffer, self.cos_buffer, self.sin_buffer)
+            embeddings = layer(embeddings, causal_buffer, cos_buffer, sin_buffer)
 
         logits = self.predictor(embeddings if self.training else embeddings[:, -1, :])
 
@@ -83,21 +90,28 @@ class TransformerLayer(nn.Module):
         super().__init__()
 
         self.attention_norm = nn.RMSNorm(embedding_size)
-        self.heads = nn.ModuleList([SelfAttentionHead() for j in range(layer_size)])
+        self.attention_heads = nn.ModuleList([SelfAttentionHead() for j in range(layer_size)])
+        self.attention_proj = nn.Linear(embedding_size, embedding_size, bias=False)
 
         self.mlp_norm = nn.RMSNorm(embedding_size)
-        self.mlp = nn.Sequential(
-                nn.Linear(embedding_size, hidden_size),
-                nn.ReLU(),
-                nn.Linear(hidden_size, embedding_size)
+        self.mlp_upward = nn.Linear(embedding_size, hidden_size, bias=False)
+        self.mlp_gate = nn.Sequential(
+                nn.Linear(embedding_size, hidden_size, bias=False),
+                nn.ELU()
             )
+        self.mlp_downward = nn.Linear(hidden_size, embedding_size, bias=False)
 
     def forward(self, embeddings, causal_buffer, cos_buffer, sin_buffer):
 
-        embeddings = self.attention_norm(embeddings)
-        embeddings = embeddings + torch.cat([head(embeddings, causal_buffer, cos_buffer, sin_buffer) for head in self.heads], dim=-1)
-        embeddings = self.mlp_norm(embeddings)
-        embeddings = embeddings + self.mlp(embeddings)
+        attention_input = self.attention_norm(embeddings)
+        attention_values = torch.cat([
+                head(embeddings, causal_buffer, cos_buffer, sin_buffer) for head in self.attention_heads
+            ], dim=-1)
+        embeddings = embeddings + self.attention_proj(attention_values)
+        
+        mlp_input = self.mlp_norm(embeddings)
+        mlp_up = self.mlp_upward(mlp_input) * self.mlp_gate(mlp_input)
+        embeddings = embeddings + self.mlp_downward(mlp_up)
 
         return embeddings
 
@@ -106,14 +120,11 @@ class SelfAttentionHead(nn.Module):
 
         super().__init__()
 
-        self.key_maker = nn.Linear(embedding_size, key_size)
-        self.query_maker = nn.Linear(embedding_size, key_size)
-        self.value_maker = nn.Linear(embedding_size, head_size)
+        self.key_maker = nn.Linear(embedding_size, key_size, bias=False)
+        self.query_maker = nn.Linear(embedding_size, key_size, bias=False)
+        self.value_maker = nn.Linear(embedding_size, head_size, bias=False)
 
     def forward(self, embeddings, causal_buffer, cos_buffer, sin_buffer):
-
-        current_context_size = embeddings.shape[1]
-        assert(current_context_size <= context_size)
 
         keys = self.rotate(self.key_maker(embeddings), cos_buffer, sin_buffer) # B, Ck, K
         queries = self.rotate(self.query_maker(embeddings), cos_buffer, sin_buffer) # B, Cq, K
@@ -122,7 +133,7 @@ class SelfAttentionHead(nn.Module):
         attention_scores = torch.bmm(queries, keys.transpose(1, 2)) # B, Cq, K + B, K, Ck -> B, Cq, Ck
         attention_scores = attention_scores / math.sqrt(key_size)
 
-        attention_scores = attention_scores + causal_buffer[:current_context_size, :current_context_size]
+        attention_scores = attention_scores + causal_buffer
 
         attention_weights = functional.softmax(attention_scores, dim=-1) # B, Cq, Ck
         output = torch.bmm(attention_weights, values) # B, Cq, Ck + B, Ck, V -> B, Cq, V
@@ -134,3 +145,15 @@ class SelfAttentionHead(nn.Module):
         swapped = torch.cat((embeddings[:, :, key_size // 2:], embeddings[:, :, :key_size // 2]), dim=-1)
 
         return cos_buffer * embeddings + sin_buffer * swapped
+
+def load_transformer():
+
+    transformer = Transformer()
+
+    if resume and os.path.exists(checkpoint_path):
+        print(f"Loading checkpoint from {checkpoint_path}.")
+
+        checkpoint = torch.load(checkpoint_path, weights_only=True)
+        transformer.load_state_dict(checkpoint["transformer"])
+
+    return transformer

@@ -18,8 +18,8 @@ import os
 import torch
 
 from settings import context_size, dataset_name
-from tokenizer import Tokenizer
-from utils import load_file, pickle_load
+from tokenizer import load_tokenizer
+from utils import load_file
 
 class TransformerDataset(Dataset):
 
@@ -41,7 +41,7 @@ def load_dataset():
         text_indexes = np.load(f"datasets/{dataset_name}.npy")
     else:
         text = load_file(f"datasets/{dataset_name}.txt")
-        tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
+        tokenizer = load_tokenizer()
         text_indexes = tokenizer.encode(text, use_pbar=True)
         np.save(f"datasets/{dataset_name}.npy", text_indexes)
 

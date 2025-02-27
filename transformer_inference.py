@@ -15,9 +15,9 @@
 import time
 
 from settings import dataset_name
-from tokenizer import Tokenizer
-from transformer import Transformer
-from utils import load_transformer, pickle_load
+from tokenizer import load_tokenizer
+from transformer import load_transformer
+from device import device
 
 text = """
 It took perhaps thirty seconds for Snape to realize that he was on fire.
@@ -28,9 +28,8 @@ mode = "append"
 
 assert(mode in ["append", "reprint"])
 
-transformer = load_transformer(Transformer)
-
-tokenizer = pickle_load(Tokenizer, f"tokenizers/{dataset_name}.pickle")
+transformer = load_transformer().to(device)
+tokenizer = load_tokenizer()
 text_tokens = tokenizer.encode(text)[:-5]
 
 if mode == "append":

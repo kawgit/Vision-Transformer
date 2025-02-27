@@ -13,52 +13,29 @@
 #    limitations under the License.
 
 from torch.utils.data import DataLoader
-import os
-import time
 import torch
-import torch.nn.functional as functional
-import torch.optim as optim
 
+from checkpoint import load_checkpoint
 from dataset import load_dataset
-from settings import vocab_size, batch_size, learning_rate, epochs, model_path
+from device import device
+from settings import *
+from torch.nn.functional import cross_entropy
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import LambdaLR
 from trainer import Trainer
 from transformer import Transformer
-from utils import format_number, load_transformer
 
-dataset = load_dataset()
-torch.autograd.set_detect_anomaly(True)
-
-transformer = load_transformer(Transformer)
+transformer = Transformer().to(device)
 
 def criterion(output_probs, expected_indexes):
+    return cross_entropy(output_probs.reshape(-1, vocab_size), expected_indexes.reshape(-1))
 
-    return functional.cross_entropy(output_probs.reshape(-1, vocab_size), expected_indexes.reshape(-1))
+optimizer = AdamW(transformer.parameters(), lr=1, fused=True)
+scheduler = LambdaLR(optimizer, lambdalr)
 
-def after_batch(trainer, firing):
+trainer = Trainer(criterion, optimizer, scheduler)
 
-    print(f'Epoch: {trainer.epoch_idx}, Batch: {trainer.batch_idx}, Epoch Loss: {format_number(trainer.epoch_loss)}, Batch Loss: {format_number(trainer.batch_loss)}')
+load_checkpoint(transformer, trainer)
 
-    if firing:
-        print("Saving model...")
-        os.makedirs('transformers', exist_ok=True)
-        torch.save(transformer.state_dict(), model_path)
-
-def after_epoch(trainer, firing):
-
-    print(f'Epoch: {trainer.epoch_idx}, Epoch Loss: {trainer.epoch_loss}')
-    
-    if firing:
-        print("Saving model...")
-        os.makedirs('transformers', exist_ok=True)
-        torch.save(transformer.state_dict(), model_path)
-
-trainer = Trainer(
-    transformer,
-    DataLoader(dataset, batch_size, shuffle=True),
-    criterion,
-    optim.AdamW(transformer.parameters(), lr=learning_rate),
-    after_batch,
-    after_epoch
-)
-
-trainer.fit(epochs)
+dataloader = DataLoader(load_dataset(), batch_size, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True, prefetch_factor=2)
+trainer.fit(transformer, dataloader, 10)
