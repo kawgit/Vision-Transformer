@@ -13,8 +13,8 @@
 #    limitations under the License.
 
 from settings import *
-from tokenizer import Tokenizer
-from utils import load_file, save_tokenizer
+from tokenizer import Tokenizer, save_tokenizer
+from utils import load_file
 
 text = load_file(f"datasets/{dataset_name}.txt")
 
