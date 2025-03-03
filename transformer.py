@@ -27,11 +27,6 @@ class Transformer(nn.Module):
         super().__init__()
 
         self.register_buffer(
-            "causal_buffer",
-            torch.triu(torch.ones(context_size, context_size).float() * -torch.inf, 1)
-        )
-
-        self.register_buffer(
             "cos_buffer",
             torch.tensor(np.array([
                 [
@@ -50,7 +45,9 @@ class Transformer(nn.Module):
         )
 
         self.table = nn.Embedding(vocab_size, embedding_size)
-        self.layers = nn.Sequential(*[TransformerLayer() for i in range(num_layers)])
+        self.sas = nn.ModuleList([TransformerSA() for i in range(num_layers)])
+        self.ffns = nn.ModuleList([TransformerFFN() for i in range(num_layers)])
+        self.norm = nn.RMSNorm(embedding_size)
         self.predictor = nn.Linear(embedding_size, vocab_size)
 
     def forward(self, tokens):
@@ -58,14 +55,16 @@ class Transformer(nn.Module):
         current_context_size = tokens.shape[1]
         assert(current_context_size <= context_size)
 
-        causal_buffer = self.causal_buffer[:current_context_size, :current_context_size]
         cos_buffer = self.cos_buffer[:current_context_size, :]
         sin_buffer = self.sin_buffer[:current_context_size, :]
 
         embeddings = self.table(tokens)
     
-        for layer in self.layers:
-            embeddings = layer(embeddings, causal_buffer, cos_buffer, sin_buffer)
+        for sa, ffn in zip(self.sas, self.ffns):
+            embeddings = sa(embeddings, cos_buffer, sin_buffer)
+            embeddings = ffn(embeddings)
+        
+        embeddings = self.norm(embeddings)
 
         logits = self.predictor(embeddings if self.training else embeddings[:, -1, :])
 
@@ -84,67 +83,61 @@ class Transformer(nn.Module):
             seed_tokens.append(new_token)
             yield new_token
 
-class TransformerLayer(nn.Module):
+class TransformerSA(nn.Module):
     def __init__(self):
 
         super().__init__()
 
-        self.attention_norm = nn.RMSNorm(embedding_size)
-        self.attention_heads = nn.ModuleList([SelfAttentionHead() for j in range(layer_size)])
-        self.attention_proj = nn.Linear(embedding_size, embedding_size, bias=False)
+        self.norm = nn.RMSNorm(embedding_size)
+        self.qkv_proj = nn.Linear(embedding_size, 2 * key_size * num_heads + head_size * num_heads, bias=False)
+        self.out_proj = nn.Linear(num_heads * head_size, embedding_size, bias=False)
 
-        self.mlp_norm = nn.RMSNorm(embedding_size)
-        self.mlp_upward = nn.Linear(embedding_size, hidden_size, bias=False)
-        self.mlp_gate = nn.Sequential(
-                nn.Linear(embedding_size, hidden_size, bias=False),
-                nn.ELU()
-            )
-        self.mlp_downward = nn.Linear(hidden_size, embedding_size, bias=False)
+    def forward(self, embeddings, cos_buffer, sin_buffer):
 
-    def forward(self, embeddings, causal_buffer, cos_buffer, sin_buffer):
+        normed = self.norm(embeddings)
+        qkv = self.qkv_proj(normed) # B, C, Q * H + K * H + V * H
 
-        attention_input = self.attention_norm(embeddings)
-        attention_values = torch.cat([
-                head(embeddings, causal_buffer, cos_buffer, sin_buffer) for head in self.attention_heads
-            ], dim=-1)
-        embeddings = embeddings + self.attention_proj(attention_values)
+        keys_start = key_size * num_heads
+        values_start = 2 * keys_start
+
+        queries = qkv[..., :keys_start].reshape((*embeddings.shape[:-1], -1, key_size)).transpose(1, 2) # B, H, C, Q
+        keys = qkv[..., keys_start:values_start].reshape((*embeddings.shape[:-1], -1, key_size)).transpose(1, 2) # B, H, C, K
+        values = qkv[..., values_start:].reshape((*embeddings.shape[:-1], -1, head_size)).transpose(1, 2) # B, H, C, V
+
+        queries = self.rotate(queries, cos_buffer, sin_buffer)
+        keys = self.rotate(keys, cos_buffer, sin_buffer)
+
+        outputs = functional.scaled_dot_product_attention(queries.contiguous(), keys.contiguous(), values.contiguous(), is_causal=True, dropout_p=(0 if not self.training else 0.1))
+        outputs = self.out_proj(outputs.transpose(1, 2).reshape((*embeddings.shape[:-1], -1)))
+
+        return embeddings + outputs
+
+    def rotate(self, features, cos_buffer, sin_buffer):
         
-        mlp_input = self.mlp_norm(embeddings)
-        mlp_up = self.mlp_upward(mlp_input) * self.mlp_gate(mlp_input)
-        embeddings = embeddings + self.mlp_downward(mlp_up)
+        swapped = torch.cat((features[..., key_size // 2:], features[..., :key_size // 2]), dim=-1)
 
-        return embeddings
+        return cos_buffer * features + sin_buffer * swapped
 
-class SelfAttentionHead(nn.Module):
+class TransformerFFN(nn.Module):
     def __init__(self):
 
         super().__init__()
 
-        self.key_maker = nn.Linear(embedding_size, key_size, bias=False)
-        self.query_maker = nn.Linear(embedding_size, key_size, bias=False)
-        self.value_maker = nn.Linear(embedding_size, head_size, bias=False)
+        self.norm = nn.RMSNorm(embedding_size)
+        self.up_proj = nn.Linear(embedding_size, 2 * hidden_size, bias=False)
+        self.down_proj = nn.Linear(hidden_size, embedding_size, bias=False)
+    
+    def forward(self, embeddings):
 
-    def forward(self, embeddings, causal_buffer, cos_buffer, sin_buffer):
+        normed = self.norm(embeddings)
+        up_gate = self.up_proj(normed)
 
-        keys = self.rotate(self.key_maker(embeddings), cos_buffer, sin_buffer) # B, Ck, K
-        queries = self.rotate(self.query_maker(embeddings), cos_buffer, sin_buffer) # B, Cq, K
-        values = self.value_maker(embeddings) # B, Ck, V
+        up = up_gate[..., :hidden_size]
+        gate = up_gate[..., hidden_size:]
 
-        attention_scores = torch.bmm(queries, keys.transpose(1, 2)) # B, Cq, K + B, K, Ck -> B, Cq, Ck
-        attention_scores = attention_scores / math.sqrt(key_size)
+        down = self.down_proj(up * functional.elu(gate))
 
-        attention_scores = attention_scores + causal_buffer
-
-        attention_weights = functional.softmax(attention_scores, dim=-1) # B, Cq, Ck
-        output = torch.bmm(attention_weights, values) # B, Cq, Ck + B, Ck, V -> B, Cq, V
-
-        return output
-
-    def rotate(self, embeddings, cos_buffer, sin_buffer):
-        
-        swapped = torch.cat((embeddings[:, :, key_size // 2:], embeddings[:, :, :key_size // 2]), dim=-1)
-
-        return cos_buffer * embeddings + sin_buffer * swapped
+        return embeddings + down
 
 def load_transformer():
 

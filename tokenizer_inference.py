@@ -17,10 +17,9 @@ from tokenizer import load_tokenizer
 from utils import split_into_segments
 
 text = """
-MENENIUS:
-There was a time when all the body's members
-Rebell'd against the belly, thus accused it:
-That only like a gulf it did remain
+It seemed that Professor McGonagall had reached the point she was most
+anxious to discuss, the real reason she had been waiting on a cold, hard
+wall all day, for neither as a cat nor as a woman had she fixed
 """
 
 tokenizer = load_tokenizer()

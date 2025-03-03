@@ -19,13 +19,13 @@ dataset_name = "harrypotter1"
 
 vocab_size = 10000
 
-context_size = 500
-key_size = 128
-head_size = 128
-layer_size = 8
+context_size = 512
+key_size = 32
+head_size = 32
+num_heads = 16
+embedding_size = 1024
 hidden_size = 2048
-embedding_size = head_size * layer_size
-num_layers = 12
+num_layers = 16
 
 assert(key_size % 2 == 0)
 
@@ -33,16 +33,17 @@ batch_size = 16
 
 lr_init = 3e-5
 lr_max = 3e-4
-lr_min = 2e-5
-lr_decay = .9999
+lr_min = 3e-6
 warmup_steps = 600 
-period_steps = 5000
+period_steps = 49 * warmup_steps
 resume = True
 
 def lambdalr(step):
     if step < warmup_steps:
-        return (step / warmup_steps * (lr_max - lr_init) + lr_init)
-    return (lr_max - lr_min) * (lr_decay ** (step - warmup_steps) * math.cos(math.pi * (step - warmup_steps) / period_steps) ** 2) + lr_min
+        return lr_init + (lr_max - lr_init) * step / warmup_steps
+    if step < warmup_steps + period_steps:
+        return lr_min + (lr_max - lr_min) * math.cos((step - warmup_steps) * math.pi / 2 / period_steps) ** 4
+    return lr_min
 
 model_name = f"{dataset_name}_c{context_size}_m{embedding_size}_k{key_size}_h{head_size}_l{num_layers}_v{hidden_size}"
 checkpoint_path = os.path.join('checkpoints', model_name + '.checkpoint')

@@ -22,6 +22,3 @@ tokenizer = Tokenizer()
 tokenizer.train(text)
 
 save_tokenizer(tokenizer)
-
-
-

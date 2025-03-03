@@ -20,10 +20,9 @@ from transformer import load_transformer
 from device import device
 
 text = """
-It took perhaps thirty seconds for Snape to realize that he was on fire.
-A sudden yelp told her she had done her job. Scooping the fire off him
-into a little jar in her pocket, she scrambled back along the row --
-Snape would never know what had happened."""
+It seemed that Professor McGonagall had reached the point she was most
+anxious to discuss, the real reason she had been waiting on a cold, hard
+wall all day, for neither as a cat nor as a woman had she fixed"""
 mode = "append"
 
 assert(mode in ["append", "reprint"])
